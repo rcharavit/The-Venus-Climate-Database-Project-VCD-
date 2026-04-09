@@ -1,1 +1,165 @@
+"""
+Created on Wed Mar 25 17:33:12 2026
+Extraction and visualization of VCD temperature data
+"""
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Read a VCD 2D text file with || separators
+
+def read_vcd_2d(filepath):
+    """
+    Reads a 2D VCD text file with the format:
+
+    ---- || lat1 lat2 lat3 ...
+    lon1 || val1 val2 val3 ...
+    lon2 || val1 val2 val3 ...
+
+    Returns
+    -------
+    latitudes : np.ndarray, shape (nlat,)
+    longitudes : np.ndarray, shape (nlon,)
+    values : np.ndarray, shape (nlon, nlat)
+    """
+    with open(filepath, "r", encoding="utf-8-sig") as f:
+        lines = f.readlines()
+
+    latitudes = None
+    data_rows = []
+
+    for line in lines:
+        line = line.strip()
+
+        if not line:
+            continue
+
+        # Skip comments
+        if line.startswith("#"):
+            continue
+
+        # Skip separator lines made only of "-"
+        if set(line) == {"-"}:
+            continue
+
+        # Latitude line
+        if line.startswith("----"):
+            if "||" not in line:
+                continue
+            _, right = line.split("||", 1)
+            parts = right.split()
+            latitudes = np.array([float(x) for x in parts], dtype=float)
+            continue
+
+        # Data lines
+        if "||" in line:
+            left, right = line.split("||", 1)
+            try:
+                lon = float(left.strip())
+                vals = [float(x) for x in right.split()]
+                data_rows.append([lon] + vals)
+            except ValueError:
+                continue
+
+    if latitudes is None:
+        raise ValueError("Latitude line not found.")
+
+    if len(data_rows) == 0:
+        raise ValueError("No data rows found.")
+
+    data = np.array(data_rows, dtype=float)
+    longitudes = data[:, 0]
+    values = data[:, 1:]
+
+    if values.shape[1] != len(latitudes):
+        raise ValueError(
+            f"Inconsistency: {values.shape[1]} columns for {len(latitudes)} latitudes."
+        )
+
+    return latitudes, longitudes, values
+
+
+# Extract temperature as a function of latitude
+# for the longitude closest to lon0
+
+def extract_latitudinal_profile(filepath, lon0=0.0):
+    """
+    Returns the temperature profile as a function of latitude
+    for the longitude closest to lon0.
+    """
+    lat, lon, values = read_vcd_2d(filepath)
+
+    # Longitude closest to requested lon0
+    ilon = np.argmin(np.abs(lon - lon0))
+    selected_lon = lon[ilon]
+
+    # Temperature for all latitudes at this longitude
+    T_lat = values[ilon, :]
+
+    return lat, T_lat, selected_lon
+
+
+# Print all temperatures as a function of latitude
+# for longitude closest to lon0
+
+
+def print_all_latitudes(filepath, variable_name="Temperature", unit="K", lon0=0.0):
+    """
+    Prints the value of the selected variable for all latitudes,
+    using the longitude closest to lon0.
+    """
+    lat, T_lat, selected_lon = extract_latitudinal_profile(filepath, lon0=lon0)
+
+    print(f"\nFile: {filepath}")
+    print(f"Selected longitude: {selected_lon:.2f}°\n")
+
+    for la, temp in zip(lat, T_lat):
+        print(f"Latitude = {la:8.2f}°   {variable_name} = {temp:8.3f} {unit}")
+
+
+
+#Main
+
+filepath = r"C:\M1 SOAC\S2\Projet M1 2026\standard_cloud_averagesolar.txt"
+
+lat, lon, T = read_vcd_2d(filepath)
+
+#Print all temperatures as a function of latitude
+#for longitude closest to 0°
+print_all_latitudes(
+    filepath,
+    variable_name="Temperature",
+    unit="K",
+    lon0=0.0
+)
+
+# Extract latitude profile at longitude closest to 0°
+lat_profile, T_profile, selected_lon = extract_latitudinal_profile(filepath, lon0=0.0)
+
+
+
+# Figure 1 : 2D temperature map
+
+plt.figure(figsize=(8, 4))
+plt.pcolormesh(lat, lon, T, shading="auto")
+plt.xlabel("Latitude (degree)")
+plt.ylabel("Longitude (degree)")
+plt.title("VCD Temperature (K)")
+plt.colorbar(label="Kelvin")
+plt.tight_layout()
+plt.show()
+
+
+
+# Figure 2 : temperature as a function of latitude
+# for longitude fixed at 0° (or closest available)
+
+plt.figure(figsize=(8, 5))
+plt.plot(lat_profile, T_profile)
+plt.xlabel("Latitude (degree)")
+plt.ylabel("Temperature (K)")
+plt.title(f"Temperature at longitude {selected_lon:.2f}°")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
